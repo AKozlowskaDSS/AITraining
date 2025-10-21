@@ -4,14 +4,19 @@ document.addEventListener("DOMContentLoaded", () => {
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
 
-  // Function to fetch activities from API
-  async function fetchActivities() {
+  // Function to refresh activities list
+  async function refreshActivitiesList() {
     try {
       const response = await fetch("/activities");
       const activities = await response.json();
 
-      // Clear loading message
+      // Clear activities list
       activitiesList.innerHTML = "";
+      
+      // Clear existing options except the first one
+      while (activitySelect.children.length > 1) {
+        activitySelect.removeChild(activitySelect.lastChild);
+      }
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -24,7 +29,14 @@ document.addEventListener("DOMContentLoaded", () => {
         let participantsHTML = '';
         if (details.participants.length > 0) {
           const participantsList = details.participants
-            .map(email => `<li>${email}</li>`)
+            .map(email => `
+              <li>
+                <span class="participant-email">${email}</span>
+                <button class="delete-participant" onclick="deleteParticipant('${name}', '${email}')" title="Remove participant">
+                  ✕
+                </button>
+              </li>
+            `)
             .join('');
           participantsHTML = `
             <div class="participants-section">
@@ -65,6 +77,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // Function to fetch activities from API (initial load)
+  async function fetchActivities() {
+    // Show loading message
+    activitiesList.innerHTML = "<p>Loading activities...</p>";
+    
+    // Use the refresh function to load activities
+    await refreshActivitiesList();
+  }
+
   // Handle form submission
   signupForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -86,6 +107,9 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        
+        // Refresh the activities list to show the new participant
+        await refreshActivitiesList();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
@@ -108,3 +132,57 @@ document.addEventListener("DOMContentLoaded", () => {
   // Initialize app
   fetchActivities();
 });
+
+// Global function to delete a participant
+async function deleteParticipant(activityName, email) {
+  if (!confirm(`Are you sure you want to remove ${email} from ${activityName}?`)) {
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `/activities/${encodeURIComponent(activityName)}/remove?email=${encodeURIComponent(email)}`,
+      {
+        method: "DELETE",
+      }
+    );
+
+    const result = await response.json();
+
+    if (response.ok) {
+      // Show success message
+      const messageDiv = document.getElementById("message");
+      messageDiv.textContent = result.message;
+      messageDiv.className = "success";
+      messageDiv.classList.remove("hidden");
+
+      // Refresh the activities list to show updated participants
+      await refreshActivitiesList();
+
+      // Hide message after 5 seconds
+      setTimeout(() => {
+        messageDiv.classList.add("hidden");
+      }, 5000);
+    } else {
+      // Show error message
+      const messageDiv = document.getElementById("message");
+      messageDiv.textContent = result.detail || "Failed to remove participant";
+      messageDiv.className = "error";
+      messageDiv.classList.remove("hidden");
+      
+      setTimeout(() => {
+        messageDiv.classList.add("hidden");
+      }, 5000);
+    }
+  } catch (error) {
+    console.error("Error removing participant:", error);
+    const messageDiv = document.getElementById("message");
+    messageDiv.textContent = "Failed to remove participant. Please try again.";
+    messageDiv.className = "error";
+    messageDiv.classList.remove("hidden");
+    
+    setTimeout(() => {
+      messageDiv.classList.add("hidden");
+    }, 5000);
+  }
+}
